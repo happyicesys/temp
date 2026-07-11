@@ -1,0 +1,143 @@
+<?php
+
+namespace App\Models;
+
+use Database\Factories\DeviceFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
+#[Fillable([
+    'vendor',
+    'vendor_device_id',
+    'serial_number',
+    'asset_code',
+    'model',
+    'name',
+    'location',
+    'customer_id',
+    'operator_id',
+    'is_active',
+    'alert_low_temp',
+    'alert_high_temp',
+    'alert_emails',
+    'alert_phones',
+    'last_polled_at',
+    'last_reading_at',
+])]
+class Device extends Model
+{
+    /** @use HasFactory<DeviceFactory> */
+    use HasFactory;
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+            'alert_low_temp' => 'decimal:2',
+            'alert_high_temp' => 'decimal:2',
+            'last_polled_at' => 'datetime',
+            'last_reading_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * @return BelongsTo<Customer, $this>
+     */
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    /**
+     * @return BelongsTo<Operator, $this>
+     */
+    public function operator(): BelongsTo
+    {
+        return $this->belongsTo(Operator::class);
+    }
+
+    /**
+     * All temperature samples this device has reported.
+     *
+     * @return HasMany<Temp, $this>
+     */
+    public function temps(): HasMany
+    {
+        return $this->hasMany(Temp::class);
+    }
+
+    /**
+     * Convenience accessor for charts / dashboards.
+     *
+     * @return HasOne<Temp, $this>
+     */
+    public function latestTemp(): HasOne
+    {
+        return $this->hasOne(Temp::class)->latestOfMany('recorded_at');
+    }
+
+    /**
+     * Multi-probe vending-style temperature samples (T1-T4) for this device.
+     *
+     * @return HasMany<VendTemp, $this>
+     */
+    public function vendTemps(): HasMany
+    {
+        return $this->hasMany(VendTemp::class);
+    }
+
+    /**
+     * Most recent vend temperature sample, for listing / status views.
+     *
+     * @return HasOne<VendTemp, $this>
+     */
+    public function latestVendTemp(): HasOne
+    {
+        return $this->hasOne(VendTemp::class)->latestOfMany('recorded_at');
+    }
+
+    /**
+     * Parse the comma-separated alert_emails column into a clean list.
+     *
+     * @return array<int, string>
+     */
+    public function alertEmailList(): array
+    {
+        return $this->splitContactList($this->alert_emails);
+    }
+
+    /**
+     * Parse the comma-separated alert_phones column into a clean list.
+     *
+     * @return array<int, string>
+     */
+    public function alertPhoneList(): array
+    {
+        return $this->splitContactList($this->alert_phones);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function splitContactList(?string $raw): array
+    {
+        if ($raw === null || trim($raw) === '') {
+            return [];
+        }
+
+        return collect(explode(',', $raw))
+            ->map(fn (string $value): string => trim($value))
+            ->filter()
+            ->values()
+            ->all();
+    }
+}
