@@ -4,15 +4,15 @@ namespace Database\Seeders;
 
 use App\Models\Customer;
 use App\Models\Device;
-use App\Models\VendTemp;
+use App\Models\Temp;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 
 class DemoSeeder extends Seeder
 {
     /**
-     * Seed a handful of devices with 24h of T1/T2 readings so the device list
-     * and temperature charts have something to show. Idempotent: skips if any
+     * Seed a handful of devices with 24h of readings so the device list and
+     * temperature charts have something to show. Idempotent: skips if any
      * device already exists.
      */
     public function run(): void
@@ -31,40 +31,46 @@ class DemoSeeder extends Seeder
     }
 
     /**
-     * Generate 24 hours of readings at 15-minute intervals for the chamber
-     * (T1) and evaporator (T2) probes, wandering around realistic setpoints.
+     * Generate 24 hours of readings at 15-minute intervals, wandering around a
+     * realistic cold-chain setpoint, and cache the latest sample on the device.
      */
     private function seedReadings(Device $device): void
     {
-        $baselines = [
-            VendTemp::TYPE_CHAMBER => -180,    // -18.0°C
-            VendTemp::TYPE_EVAPORATOR => -230, // -23.0°C
-        ];
+        $temperatureSetpoint = -18.0;
+        $humiditySetpoint = 55.0;
+
+        $temperature = $temperatureSetpoint;
+        $humidity = $humiditySetpoint;
 
         $rows = [];
         $now = Carbon::now();
 
-        foreach ($baselines as $type => $baseline) {
-            $value = $baseline;
+        for ($step = 96; $step >= 0; $step--) {
+            $temperature += random_int(-8, 8) / 10;
+            $temperature = max($temperatureSetpoint - 4.0, min($temperatureSetpoint + 4.0, $temperature));
 
-            for ($step = 96; $step >= 0; $step--) {
-                $value += random_int(-8, 8);
-                $value = max($baseline - 40, min($baseline + 40, $value));
+            $humidity += random_int(-15, 15) / 10;
+            $humidity = max($humiditySetpoint - 10.0, min($humiditySetpoint + 10.0, $humidity));
 
-                $rows[] = [
-                    'device_id' => $device->id,
-                    'type' => $type,
-                    'value' => $value,
-                    'is_keep' => false,
-                    'recorded_at' => $now->copy()->subMinutes($step * 15),
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
+            $rows[] = [
+                'device_id' => $device->id,
+                'temperature' => round($temperature, 2),
+                'humidity' => round($humidity, 2),
+                'is_online' => true,
+                'recorded_at' => $now->copy()->subMinutes($step * 15),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
         }
 
-        VendTemp::query()->insert($rows);
+        Temp::query()->insert($rows);
 
-        $device->update(['last_reading_at' => $now]);
+        $latest = end($rows);
+
+        $device->update([
+            'last_reading_at' => $latest['recorded_at'],
+            'last_temperature' => $latest['temperature'],
+            'last_humidity' => $latest['humidity'],
+        ]);
     }
 }

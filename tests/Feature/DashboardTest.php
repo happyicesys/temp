@@ -2,8 +2,8 @@
 
 use App\Models\Customer;
 use App\Models\Device;
+use App\Models\Temp;
 use App\Models\User;
-use App\Models\VendTemp;
 
 use function Pest\Laravel\actingAs;
 
@@ -41,9 +41,8 @@ test('a device with a recent chamber reading is reported as online and normal', 
         'alert_high_temp' => -15,
     ]);
 
-    VendTemp::factory()->for($device)->create([
-        'type' => VendTemp::TYPE_CHAMBER,
-        'value' => -200, // -20.0°C, inside the alert band
+    Temp::factory()->for($device)->create([
+        'temperature' => -20.0, // inside the alert band
         'recorded_at' => now()->subMinutes(2),
     ]);
 
@@ -61,9 +60,8 @@ test('a device with a recent chamber reading is reported as online and normal', 
 test('a device whose latest reading is older than ten minutes is offline', function () {
     $device = Device::factory()->for(Customer::factory())->create();
 
-    VendTemp::factory()->for($device)->create([
-        'type' => VendTemp::TYPE_CHAMBER,
-        'value' => -200,
+    Temp::factory()->for($device)->create([
+        'temperature' => -20.0,
         'recorded_at' => now()->subMinutes(30),
     ]);
 
@@ -82,9 +80,8 @@ test('a reading outside the alert band raises an active alert', function () {
         'alert_high_temp' => -15,
     ]);
 
-    VendTemp::factory()->for($device)->create([
-        'type' => VendTemp::TYPE_CHAMBER,
-        'value' => 0, // 0.0°C, well above the -15°C ceiling
+    Temp::factory()->for($device)->create([
+        'temperature' => 0.0, // well above the -15°C ceiling
         'recorded_at' => now()->subMinute(),
     ]);
 
@@ -112,9 +109,8 @@ test('the chamber chart is empty when there are no readings', function () {
 test('the chamber chart is bucketed for the selected range', function () {
     $device = Device::factory()->for(Customer::factory())->create();
 
-    VendTemp::factory()->for($device)->create([
-        'type' => VendTemp::TYPE_CHAMBER,
-        'value' => -200,
+    Temp::factory()->for($device)->create([
+        'temperature' => -20.0,
         'recorded_at' => now()->subMinutes(2),
     ]);
 

@@ -90,40 +90,6 @@ class Device extends Model
     }
 
     /**
-     * Multi-probe vending-style temperature samples (T1-T4) for this device.
-     *
-     * @return HasMany<VendTemp, $this>
-     */
-    public function vendTemps(): HasMany
-    {
-        return $this->hasMany(VendTemp::class);
-    }
-
-    /**
-     * Most recent vend temperature sample, for listing / status views.
-     *
-     * @return HasOne<VendTemp, $this>
-     */
-    public function latestVendTemp(): HasOne
-    {
-        return $this->hasOne(VendTemp::class)->latestOfMany('recorded_at');
-    }
-
-    /**
-     * Most recent chamber (T1) reading. The dashboard treats the chamber probe
-     * as the device's headline temperature, so it needs the latest sample of
-     * that specific type rather than of any probe.
-     *
-     * @return HasOne<VendTemp, $this>
-     */
-    public function latestChamberTemp(): HasOne
-    {
-        return $this->hasOne(VendTemp::class)
-            ->where('type', VendTemp::TYPE_CHAMBER)
-            ->latestOfMany('recorded_at');
-    }
-
-    /**
      * Parse the comma-separated alert_emails column into a clean list.
      *
      * @return array<int, string>

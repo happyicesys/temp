@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import VendTempChart from '@/components/VendTempChart.vue';
+import {
+    DEFAULT_TIME_ZONE,
+    TIME_ZONE_OPTIONS,
+    TIME_ZONE_STORAGE_KEY,
+    formatInZone,
+    normalizeTimeZone,
+    utcIsoToZonedInput,
+    zonedInputToUtcIso,
+} from '@/lib/timezone';
+import type { TimeZoneId } from '@/lib/timezone';
 
 interface Reading {
     temperature: number | null;
@@ -34,6 +44,23 @@ defineOptions({
         breadcrumbs: [{ title: 'Temperature', href: '#' }],
     },
 });
+
+// Display zone for all times on this page. Readings stay UTC on the wire; only
+// rendering and the From/To inputs are interpreted in this zone. Remembered in
+// localStorage so the choice survives navigation and reloads.
+const timeZoneOptions = TIME_ZONE_OPTIONS;
+
+function loadStoredTimeZone(): TimeZoneId {
+    if (typeof window === 'undefined') {
+        return DEFAULT_TIME_ZONE;
+    }
+
+    return normalizeTimeZone(
+        window.localStorage.getItem(TIME_ZONE_STORAGE_KEY),
+    );
+}
+
+const timeZone = ref<TimeZoneId>(loadStoredTimeZone());
 
 const TEMPERATURE_COLOR = '#0ea5e9'; // sky
 const HUMIDITY_COLOR = '#f59e0b'; // amber
@@ -103,36 +130,15 @@ const humidityStats = computed(() => summarize('humidity'));
 
 const rangeLabel = computed(
     () =>
-        `${formatLabel(props.filters.datetime_from)} → ${formatLabel(props.filters.datetime_to)}`,
+        `${formatInZone(props.filters.datetime_from, timeZone.value)} → ${formatInZone(props.filters.datetime_to, timeZone.value)}`,
 );
 
-function formatLabel(iso: string): string {
-    const d = new Date(iso);
-
-    return Number.isNaN(d.getTime())
-        ? iso
-        : d.toLocaleString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-          });
-}
-
-function toLocalInput(iso: string): string {
-    const d = new Date(iso);
-
-    if (Number.isNaN(d.getTime())) {
-        return '';
-    }
-
-    const pad = (n: number) => String(n).padStart(2, '0');
-
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-const fromInput = ref(toLocalInput(props.filters.datetime_from));
-const toInput = ref(toLocalInput(props.filters.datetime_to));
+const fromInput = ref(
+    utcIsoToZonedInput(props.filters.datetime_from, timeZone.value),
+);
+const toInput = ref(
+    utcIsoToZonedInput(props.filters.datetime_to, timeZone.value),
+);
 
 type Query = Record<string, string>;
 
@@ -146,8 +152,8 @@ function navigate(query: Query): void {
 
 function currentQuery(): Query {
     return {
-        datetime_from: new Date(fromInput.value).toISOString(),
-        datetime_to: new Date(toInput.value).toISOString(),
+        datetime_from: zonedInputToUtcIso(fromInput.value, timeZone.value),
+        datetime_to: zonedInputToUtcIso(toInput.value, timeZone.value),
     };
 }
 
@@ -166,8 +172,8 @@ const shortcuts: { label: string; hours: number }[] = [
 function applyShortcut(hours: number): void {
     const to = new Date();
     const from = new Date(to.getTime() - hours * 3600 * 1000);
-    fromInput.value = toLocalInput(from.toISOString());
-    toInput.value = toLocalInput(to.toISOString());
+    fromInput.value = utcIsoToZonedInput(from.toISOString(), timeZone.value);
+    toInput.value = utcIsoToZonedInput(to.toISOString(), timeZone.value);
     navigate({
         datetime_from: from.toISOString(),
         datetime_to: to.toISOString(),
@@ -182,6 +188,17 @@ function onDeviceChange(event: Event): void {
     const id = (event.target as HTMLSelectElement).value;
     router.get(`/devices/${id}/vend-temps`, {}, { preserveScroll: true });
 }
+
+// Persist the chosen zone and re-express the From/To inputs for the same
+// absolute instants so the visible range is unchanged by the switch.
+watch(timeZone, (zone) => {
+    if (typeof window !== 'undefined') {
+        window.localStorage.setItem(TIME_ZONE_STORAGE_KEY, zone);
+    }
+
+    fromInput.value = utcIsoToZonedInput(props.filters.datetime_from, zone);
+    toInput.value = utcIsoToZonedInput(props.filters.datetime_to, zone);
+});
 </script>
 
 <template>
@@ -204,20 +221,42 @@ function onDeviceChange(event: Event): void {
                     <span> · {{ rangeLabel }}</span>
                 </p>
             </div>
-            <div class="w-full sm:w-72">
-                <label
-                    class="mb-1 block text-xs font-medium text-muted-foreground"
-                    >Device</label
-                >
-                <select
-                    :value="device.id"
-                    class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                    @change="onDeviceChange"
-                >
-                    <option v-for="d in devices" :key="d.id" :value="d.id">
-                        {{ d.name ?? d.asset_code ?? `Device #${d.id}` }}
-                    </option>
-                </select>
+            <div
+                class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end"
+            >
+                <div class="w-full sm:w-56">
+                    <label
+                        class="mb-1 block text-xs font-medium text-muted-foreground"
+                        >Timezone</label
+                    >
+                    <select
+                        v-model="timeZone"
+                        class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                        <option
+                            v-for="tz in timeZoneOptions"
+                            :key="tz.id"
+                            :value="tz.id"
+                        >
+                            {{ tz.label }}
+                        </option>
+                    </select>
+                </div>
+                <div class="w-full sm:w-72">
+                    <label
+                        class="mb-1 block text-xs font-medium text-muted-foreground"
+                        >Device</label
+                    >
+                    <select
+                        :value="device.id"
+                        class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                        @change="onDeviceChange"
+                    >
+                        <option v-for="d in devices" :key="d.id" :value="d.id">
+                            {{ d.name ?? d.asset_code ?? `Device #${d.id}` }}
+                        </option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -284,7 +323,11 @@ function onDeviceChange(event: Event): void {
                 <CardTitle class="text-base">Temperature trend</CardTitle>
             </CardHeader>
             <CardContent>
-                <VendTempChart :series="series" :height="380" />
+                <VendTempChart
+                    :series="series"
+                    :height="380"
+                    :time-zone="timeZone"
+                />
             </CardContent>
         </Card>
 

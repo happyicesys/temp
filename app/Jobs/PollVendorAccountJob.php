@@ -9,6 +9,7 @@ use App\Services\Sensor\SensorApiException;
 use App\Services\Sensor\SensorReading;
 use App\Services\Sensor\SensorVendorClientResolver;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -30,8 +31,14 @@ use Illuminate\Support\Facades\Log;
  * next tick with zero manual setup. When auto-registration is off they are
  * logged at info level and skipped instead. Known devices that did *not* come
  * back in this poll are simply left alone — we never invent readings.
+ *
+ * The job is {@see ShouldBeUnique} keyed by vendor: the scheduler ticks far
+ * faster than the upstream rate limit allows, so without this a slow poll would
+ * let identical jobs stack up and each fire a duplicate request the moment a
+ * worker frees up — tripping Jaalee's limiter and flooding the log. Only one
+ * poll per vendor may be queued or running at any instant.
  */
-class PollVendorAccountJob implements ShouldQueue
+class PollVendorAccountJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -46,9 +53,24 @@ class PollVendorAccountJob implements ShouldQueue
      */
     public int $tries = 1;
 
+    /**
+     * Release the uniqueness lock after this many seconds even if the job never
+     * reported completion, so a crashed worker can't wedge polling shut. Comfortably
+     * longer than {@see $timeout} but shorter than the poll cadence.
+     */
+    public int $uniqueFor = 120;
+
     public function __construct(
         public readonly string $vendor,
     ) {}
+
+    /**
+     * One in-flight poll per vendor account.
+     */
+    public function uniqueId(): string
+    {
+        return $this->vendor;
+    }
 
     public function handle(SensorVendorClientResolver $resolver, DeviceProvisioner $provisioner): void
     {

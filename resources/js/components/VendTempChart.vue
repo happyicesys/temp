@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { DEFAULT_TIME_ZONE, formatEpochInZone } from '@/lib/timezone';
+import type { TimeZoneId } from '@/lib/timezone';
 
 interface ChartPoint {
     t: number; // epoch millis
@@ -18,8 +20,9 @@ const props = withDefaults(
     defineProps<{
         series: ChartSeries[];
         height?: number;
+        timeZone?: TimeZoneId;
     }>(),
-    { height: 360 },
+    { height: 360, timeZone: DEFAULT_TIME_ZONE },
 );
 
 // Fixed coordinate space; the SVG scales responsively to its container.
@@ -151,12 +154,7 @@ const xTicks = computed<number[]>(() => {
 });
 
 function formatTime(t: number): string {
-    return new Date(t).toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+    return formatEpochInZone(t, props.timeZone);
 }
 
 function formatValue(v: number | null, unit: string): string {

@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\Temp;
 use App\Services\Sensor\DeviceProvisioner;
 use App\Services\Sensor\SensorVendorClientResolver;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -169,4 +170,14 @@ test('devices belonging to other vendors are untouched', function () {
 
     $jaalee->refresh();
     expect($jaalee->last_polled_at)->not->toBeNull();
+});
+
+test('the poll job is unique per vendor account', function () {
+    $job = new PollVendorAccountJob('jaalee');
+
+    expect($job)->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($job->uniqueId())->toBe('jaalee')
+        ->and((new PollVendorAccountJob('acme'))->uniqueId())->toBe('acme')
+        // Lock must outlive the job timeout but not stay held indefinitely.
+        ->and($job->uniqueFor)->toBeGreaterThan($job->timeout);
 });

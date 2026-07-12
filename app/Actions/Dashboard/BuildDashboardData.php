@@ -3,24 +3,24 @@
 namespace App\Actions\Dashboard;
 
 use App\Models\Device;
-use App\Models\VendTemp;
+use App\Models\Temp;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 /**
- * Assembles every figure the dashboard renders from live {@see VendTemp} data.
+ * Assembles every figure the dashboard renders from live {@see Temp} data.
  *
- * The chamber (T1) probe is treated as each device's headline temperature. All
- * bucketing is done in PHP rather than via database date functions so the same
- * logic runs identically on the production MySQL connection and the in-memory
- * SQLite connection used by the test suite.
+ * Each device's most recent temperature sample is treated as its headline
+ * figure. All bucketing is done in PHP rather than via database date functions
+ * so the same logic runs identically on the production MySQL connection and the
+ * in-memory SQLite connection used by the test suite.
  */
 class BuildDashboardData
 {
     /**
-     * A device is considered "reporting now" only if its most recent chamber
-     * reading landed within this many minutes of the moment we render.
+     * A device is considered "reporting now" only if its most recent reading
+     * landed within this many minutes of the moment we render.
      */
     private const ONLINE_WITHIN_MINUTES = 10;
 
@@ -46,7 +46,7 @@ class BuildDashboardData
         $onlineSince = $to->subMinutes(self::ONLINE_WITHIN_MINUTES);
 
         $devices = Device::query()
-            ->with('latestChamberTemp')
+            ->with('latestTemp')
             ->orderBy('name')
             ->get();
 
@@ -74,8 +74,8 @@ class BuildDashboardData
      */
     private function deviceRow(Device $device, CarbonInterface $onlineSince): array
     {
-        $reading = $device->latestChamberTemp;
-        $value = $reading?->celsius;
+        $reading = $device->latestTemp;
+        $value = $reading?->temperature !== null ? (float) $reading->temperature : null;
         $isOnline = $reading !== null
             && $value !== null
             && $reading->recorded_at !== null
@@ -125,7 +125,7 @@ class BuildDashboardData
         $breaching = $rows->where('status', 'warn')->count();
         $onlinePercent = $total > 0 ? (int) round($online / $total * 100) : 0;
 
-        [$currentAvg, $previousAvg] = $this->hourlyChamberAverages($to);
+        [$currentAvg, $previousAvg] = $this->hourlyAverages($to);
         $avgDelta = ($currentAvg !== null && $previousAvg !== null)
             ? round($currentAvg - $previousAvg, 1)
             : null;
@@ -160,7 +160,7 @@ class BuildDashboardData
             ],
             [
                 'key' => 'avg',
-                'label' => 'Avg chamber',
+                'label' => 'Avg temp',
                 'value' => $currentAvg !== null ? sprintf('%.1f°', $currentAvg) : '—',
                 'sub' => 'last hour',
                 'delta' => $avgDelta !== null ? sprintf('%+.1f°', $avgDelta) : '',
@@ -171,32 +171,32 @@ class BuildDashboardData
     }
 
     /**
-     * Fleet-wide chamber average for the last hour and the hour before it.
+     * Fleet-wide temperature average for the last hour and the hour before it.
      *
      * @return array{0: ?float, 1: ?float}
      */
-    private function hourlyChamberAverages(CarbonInterface $to): array
+    private function hourlyAverages(CarbonInterface $to): array
     {
         $twoHoursAgo = CarbonImmutable::instance($to)->subHours(2);
         $oneHourAgo = CarbonImmutable::instance($to)->subHour();
 
-        $readings = $this->chamberReadings($twoHoursAgo, $to);
+        $readings = $this->temperatureReadings($twoHoursAgo, $to);
 
         $average = fn (Collection $group): ?float => $group->isEmpty()
             ? null
-            : round($group->avg(fn (VendTemp $temp): float => (float) $temp->celsius), 1);
+            : round($group->avg(fn (Temp $temp): float => (float) $temp->temperature), 1);
 
-        $withValue = $readings->filter(fn (VendTemp $temp): bool => $temp->celsius !== null);
+        $withValue = $readings->filter(fn (Temp $temp): bool => $temp->temperature !== null);
 
         return [
-            $average($withValue->filter(fn (VendTemp $t): bool => $t->recorded_at->greaterThanOrEqualTo($oneHourAgo))),
-            $average($withValue->filter(fn (VendTemp $t): bool => $t->recorded_at->lessThan($oneHourAgo))),
+            $average($withValue->filter(fn (Temp $t): bool => $t->recorded_at->greaterThanOrEqualTo($oneHourAgo))),
+            $average($withValue->filter(fn (Temp $t): bool => $t->recorded_at->lessThan($oneHourAgo))),
         ];
     }
 
     /**
-     * The chamber-temperature trend chart: a fleet average per time bucket, plus
-     * the headline figure and its move against the previous bucket.
+     * The temperature trend chart: a fleet average per time bucket, plus the
+     * headline figure and its move against the previous bucket.
      *
      * @return array{series: array<int, float>, current: ?string, unit: string, delta: ?string, trend: string, axisLabels: array<int, string>}
      */
@@ -219,9 +219,9 @@ class BuildDashboardData
     }
 
     /**
-     * Bucket every chamber reading in the window into a fleet average per slot,
-     * carrying the last known value across empty buckets so the line stays
-     * continuous. Returns an empty array when there is no data to plot.
+     * Bucket every reading in the window into a fleet average per slot, carrying
+     * the last known value across empty buckets so the line stays continuous.
+     * Returns an empty array when there is no data to plot.
      *
      * @return array<int, float>
      */
@@ -233,15 +233,15 @@ class BuildDashboardData
         /** @var array<int, array{sum: float, count: int}> $buckets */
         $buckets = array_fill(0, $bucketCount, ['sum' => 0.0, 'count' => 0]);
 
-        foreach ($this->chamberReadings($from, $to) as $reading) {
-            if ($reading->celsius === null) {
+        foreach ($this->temperatureReadings($from, $to) as $reading) {
+            if ($reading->temperature === null) {
                 continue;
             }
 
             $offset = (int) floor($reading->recorded_at->diffInSeconds($from, true) / $bucketSeconds);
             $index = max(0, min($bucketCount - 1, $offset));
 
-            $buckets[$index]['sum'] += (float) $reading->celsius;
+            $buckets[$index]['sum'] += (float) $reading->temperature;
             $buckets[$index]['count']++;
         }
 
@@ -283,17 +283,16 @@ class BuildDashboardData
     }
 
     /**
-     * Fetch chamber readings within a window, ordered oldest-first.
+     * Fetch temperature readings within a window, ordered oldest-first.
      *
-     * @return Collection<int, VendTemp>
+     * @return Collection<int, Temp>
      */
-    private function chamberReadings(CarbonInterface $from, CarbonInterface $to): Collection
+    private function temperatureReadings(CarbonInterface $from, CarbonInterface $to): Collection
     {
-        return VendTemp::query()
-            ->where('type', VendTemp::TYPE_CHAMBER)
+        return Temp::query()
             ->between($from, $to)
             ->orderBy('recorded_at')
-            ->get(['id', 'device_id', 'value', 'type', 'recorded_at']);
+            ->get(['id', 'device_id', 'temperature', 'recorded_at']);
     }
 
     /**

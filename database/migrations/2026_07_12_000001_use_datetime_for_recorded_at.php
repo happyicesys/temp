@@ -25,19 +25,11 @@ return new class extends Migration
         Schema::table('temps', function (Blueprint $table) {
             $table->dateTime('recorded_at')->change();
         });
-
-        Schema::table('vend_temps', function (Blueprint $table) {
-            $table->dateTime('recorded_at')->change();
-        });
     }
 
     public function down(): void
     {
         Schema::table('temps', function (Blueprint $table) {
-            $table->timestamp('recorded_at')->change();
-        });
-
-        Schema::table('vend_temps', function (Blueprint $table) {
             $table->timestamp('recorded_at')->change();
         });
     }

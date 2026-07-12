@@ -12,6 +12,6 @@ use Illuminate\Support\Facades\Schedule;
 // cadence a safe margin beyond the upstream window. `withoutOverlapping`
 // guards against a slow tick stacking on the next one.
 Schedule::command('sensors:poll')
-    ->everyTenSeconds()
+    ->everyTwoMinutes()
     ->withoutOverlapping()
     ->runInBackground();
