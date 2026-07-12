@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import {
     Activity,
     ArrowDownRight,
@@ -10,7 +10,7 @@ import {
     Thermometer,
     TriangleAlert,
 } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
 
 defineOptions({
@@ -19,12 +19,10 @@ defineOptions({
     },
 });
 
-/**
- * NOTE: Visual-first placeholder data. When the backend is ready, replace this
- * block with `const props = defineProps<DashboardProps>()` fed by a
- * DashboardController, keeping the same shapes below.
- */
 type Trend = 'up' | 'down' | 'flat';
+type Tone = 'neutral' | 'good' | 'warn';
+type DeviceStatus = 'ok' | 'warn' | 'offline';
+type Range = '24h' | '7d' | '30d';
 
 interface Stat {
     key: string;
@@ -33,127 +31,89 @@ interface Stat {
     sub: string;
     delta: string;
     trend: Trend;
-    icon: typeof Thermometer;
-    tone: 'neutral' | 'good' | 'warn';
+    tone: Tone;
+}
+
+interface Chart {
+    series: number[];
+    current: string | null;
+    unit: string;
+    delta: string | null;
+    trend: Trend;
+    axisLabels: string[];
 }
 
 interface DeviceRow {
     id: number;
     name: string;
-    location: string;
+    location: string | null;
     value: number | null;
-    status: 'ok' | 'warn' | 'offline';
-    recordedAt: string;
+    status: DeviceStatus;
+    recordedAt: string | null;
 }
 
-const ranges = ['24h', '7d', '30d'] as const;
-const activeRange = '24h';
+const props = defineProps<{
+    range: Range;
+    stats: Stat[];
+    chart: Chart;
+    devices: DeviceRow[];
+}>();
 
-const stats: Stat[] = [
-    {
-        key: 'devices',
-        label: 'Devices',
-        value: '24',
-        sub: 'monitored',
-        delta: '+2',
-        trend: 'up',
-        icon: Thermometer,
-        tone: 'neutral',
-    },
-    {
-        key: 'active',
-        label: 'Reporting now',
-        value: '21',
-        sub: 'online',
-        delta: '88%',
-        trend: 'up',
-        icon: Activity,
-        tone: 'good',
-    },
-    {
-        key: 'alerts',
-        label: 'Active alerts',
-        value: '3',
-        sub: 'breaching',
-        delta: '+1',
-        trend: 'up',
-        icon: TriangleAlert,
-        tone: 'warn',
-    },
-    {
-        key: 'avg',
-        label: 'Avg chamber',
-        value: '4.2°',
-        sub: 'last hour',
-        delta: '-0.4°',
-        trend: 'down',
-        icon: Snowflake,
-        tone: 'neutral',
-    },
-];
+const ranges: Range[] = ['24h', '7d', '30d'];
+const loading = ref(false);
 
-// Sample 24h chamber-temperature trend (°C).
-const series = [
-    5.1, 4.8, 4.6, 4.9, 5.3, 5.0, 4.4, 4.1, 3.9, 4.2, 4.7, 5.2, 6.1, 6.4, 5.8,
-    5.1, 4.6, 4.3, 4.0, 4.2, 4.5, 4.1, 3.8, 4.2,
-];
+/** Re-query the backend for a different window without a full page reload. */
+function selectRange(range: Range): void {
+    if (range === props.range || loading.value) {
+        return;
+    }
 
-const devices: DeviceRow[] = [
-    {
-        id: 1,
-        name: 'Cold Room A',
-        location: 'Kitchen · Level 1',
-        value: 3.8,
-        status: 'ok',
-        recordedAt: '2 min ago',
-    },
-    {
-        id: 2,
-        name: 'Display Fridge 3',
-        location: 'Front of house',
-        value: 7.9,
-        status: 'warn',
-        recordedAt: '1 min ago',
-    },
-    {
-        id: 3,
-        name: 'Freezer B2',
-        location: 'Storeroom',
-        value: -18.4,
-        status: 'ok',
-        recordedAt: '4 min ago',
-    },
-    {
-        id: 4,
-        name: 'Walk-in Chiller',
-        location: 'Loading dock',
-        value: null,
-        status: 'offline',
-        recordedAt: '46 min ago',
-    },
-];
+    router.get(
+        dashboard.url({ query: { range } }),
+        {},
+        {
+            preserveScroll: true,
+            preserveState: true,
+            replace: true,
+            only: ['range', 'stats', 'chart', 'devices'],
+            onStart: () => (loading.value = true),
+            onFinish: () => (loading.value = false),
+        },
+    );
+}
+
+/** Icons are component references, so they are mapped client-side by stat key. */
+const statIcons: Record<string, typeof Thermometer> = {
+    devices: Thermometer,
+    active: Activity,
+    alerts: TriangleAlert,
+    avg: Snowflake,
+};
 
 // --- Chart geometry (responsive via viewBox) --------------------------------
 const W = 600;
 const H = 200;
 const PAD = 12;
 
-const chartMin = computed(() => Math.min(...series));
-const chartMax = computed(() => Math.max(...series));
+const series = computed(() => props.chart.series);
+const hasSeries = computed(() => series.value.length >= 2);
+const chartMin = computed(() => Math.min(...series.value));
+const chartMax = computed(() => Math.max(...series.value));
 
 function px(i: number): number {
-    return PAD + (i / (series.length - 1)) * (W - PAD * 2);
+    return PAD + (i / (series.value.length - 1)) * (W - PAD * 2);
 }
 function py(v: number): number {
     const lo = chartMin.value - 1;
     const hi = chartMax.value + 1;
+    const span = hi - lo || 1;
 
-    return PAD + (1 - (v - lo) / (hi - lo)) * (H - PAD * 2);
+    return PAD + (1 - (v - lo) / span) * (H - PAD * 2);
 }
 
 // Smooth line using midpoint quadratic curves.
 const linePath = computed(() => {
-    const pts = series.map((v, i) => [px(i), py(v)] as const);
+    const pts = series.value.map((v, i) => [px(i), py(v)] as const);
     let d = `M${pts[0][0]},${pts[0][1]}`;
 
     for (let i = 1; i < pts.length; i++) {
@@ -171,7 +131,7 @@ const areaPath = computed(
 );
 
 const statusMeta: Record<
-    DeviceRow['status'],
+    DeviceStatus,
     { label: string; class: string; dot: string }
 > = {
     ok: {
@@ -191,7 +151,7 @@ const statusMeta: Record<
     },
 };
 
-const toneRing: Record<Stat['tone'], string> = {
+const toneRing: Record<Tone, string> = {
     neutral: 'text-foreground bg-muted',
     good: 'text-emerald-600 bg-emerald-500/15 dark:text-emerald-400',
     warn: 'text-amber-600 bg-amber-500/15 dark:text-amber-400',
@@ -221,12 +181,14 @@ const toneRing: Record<Stat['tone'], string> = {
                     v-for="r in ranges"
                     :key="r"
                     type="button"
-                    class="rounded-md px-3 py-1.5 font-medium transition-colors"
+                    :disabled="loading"
+                    class="rounded-md px-3 py-1.5 font-medium transition-colors disabled:opacity-60"
                     :class="
-                        r === activeRange
+                        r === props.range
                             ? 'bg-primary text-primary-foreground shadow-sm'
                             : 'text-muted-foreground hover:text-foreground'
                     "
+                    @click="selectRange(r)"
                 >
                     {{ r }}
                 </button>
@@ -236,7 +198,7 @@ const toneRing: Record<Stat['tone'], string> = {
         <!-- Stat cards -->
         <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <div
-                v-for="stat in stats"
+                v-for="stat in props.stats"
                 :key="stat.key"
                 class="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm"
             >
@@ -245,9 +207,13 @@ const toneRing: Record<Stat['tone'], string> = {
                         class="flex size-9 items-center justify-center rounded-lg"
                         :class="toneRing[stat.tone]"
                     >
-                        <component :is="stat.icon" class="size-4.5" />
+                        <component
+                            :is="statIcons[stat.key] ?? Thermometer"
+                            class="size-4.5"
+                        />
                     </span>
                     <span
+                        v-if="stat.delta"
                         class="inline-flex items-center gap-0.5 text-xs font-medium"
                         :class="
                             stat.trend === 'down'
@@ -291,22 +257,41 @@ const toneRing: Record<Stat['tone'], string> = {
                             Chamber temperature
                         </h2>
                         <p class="text-xs text-muted-foreground">
-                            Fleet average · last {{ activeRange }}
+                            Fleet average · last {{ props.range }}
                         </p>
                     </div>
                     <div class="text-right">
                         <div class="text-2xl font-semibold tabular-nums">
-                            4.2°C
+                            {{
+                                props.chart.current === null
+                                    ? '—'
+                                    : `${props.chart.current}${props.chart.unit}`
+                            }}
                         </div>
                         <div
-                            class="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                            v-if="props.chart.delta"
+                            class="inline-flex items-center gap-0.5 text-xs font-medium"
+                            :class="
+                                props.chart.trend === 'down'
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-muted-foreground'
+                            "
                         >
-                            <ArrowDownRight class="size-3.5" /> 0.4° vs prev
+                            <ArrowDownRight
+                                v-if="props.chart.trend === 'down'"
+                                class="size-3.5"
+                            />
+                            <ArrowUpRight
+                                v-else-if="props.chart.trend === 'up'"
+                                class="size-3.5"
+                            />
+                            {{ props.chart.delta }}° vs prev
                         </div>
                     </div>
                 </div>
 
                 <svg
+                    v-if="hasSeries"
                     :viewBox="`0 0 ${W} ${H}`"
                     preserveAspectRatio="none"
                     class="h-40 w-full sm:h-56"
@@ -344,13 +329,20 @@ const toneRing: Record<Stat['tone'], string> = {
                         vector-effect="non-scaling-stroke"
                     />
                 </svg>
+                <div
+                    v-else
+                    class="flex h-40 w-full items-center justify-center text-sm text-muted-foreground sm:h-56"
+                >
+                    No readings in this window yet.
+                </div>
 
-                <div class="flex justify-between text-xs text-muted-foreground">
-                    <span>00:00</span>
-                    <span class="hidden sm:inline">06:00</span>
-                    <span>12:00</span>
-                    <span class="hidden sm:inline">18:00</span>
-                    <span>Now</span>
+                <div
+                    v-if="hasSeries"
+                    class="flex justify-between text-xs text-muted-foreground"
+                >
+                    <span v-for="(label, i) in props.chart.axisLabels" :key="i">
+                        {{ label }}
+                    </span>
                 </div>
             </div>
 
@@ -369,9 +361,9 @@ const toneRing: Record<Stat['tone'], string> = {
                         All <ChevronRight class="size-4" />
                     </a>
                 </div>
-                <ul class="divide-y divide-border">
+                <ul v-if="props.devices.length" class="divide-y divide-border">
                     <li
-                        v-for="device in devices"
+                        v-for="device in props.devices"
                         :key="device.id"
                         class="flex items-center gap-3 px-4 py-3"
                     >
@@ -384,6 +376,7 @@ const toneRing: Record<Stat['tone'], string> = {
                                 {{ device.name }}
                             </div>
                             <div
+                                v-if="device.location"
                                 class="flex items-center gap-1 truncate text-xs text-muted-foreground"
                             >
                                 <MapPin class="size-3 shrink-0" />
@@ -401,7 +394,7 @@ const toneRing: Record<Stat['tone'], string> = {
                                 }}
                             </div>
                             <div class="text-[11px] text-muted-foreground">
-                                {{ device.recordedAt }}
+                                {{ device.recordedAt ?? 'No data' }}
                             </div>
                         </div>
                         <span
@@ -412,6 +405,12 @@ const toneRing: Record<Stat['tone'], string> = {
                         </span>
                     </li>
                 </ul>
+                <div
+                    v-else
+                    class="flex flex-1 items-center justify-center px-4 py-10 text-sm text-muted-foreground"
+                >
+                    No devices registered yet.
+                </div>
             </div>
         </div>
     </div>

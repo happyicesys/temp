@@ -14,6 +14,7 @@ import {
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     ChevronRight,
+    Droplets,
     MapPin,
     Pencil,
     Plus,
@@ -32,7 +33,11 @@ interface DeviceRow {
     location: string | null;
     is_active: boolean;
     customer: string | null;
-    latest: { value: number | null; recorded_at: string | null } | null;
+    latest: {
+        temperature: number | null;
+        humidity: number | null;
+        recorded_at: string | null;
+    } | null;
 }
 
 const props = defineProps<{
@@ -125,15 +130,31 @@ function destroy(id: number): void {
                         </span>
                     </div>
 
-                    <div
-                        class="flex items-center gap-2 text-2xl font-semibold tabular-nums"
-                    >
-                        <Thermometer class="size-5 text-muted-foreground" />
-                        {{
-                            device.latest && device.latest.value !== null
-                                ? `${device.latest.value.toFixed(1)}°C`
-                                : '—'
-                        }}
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="flex items-center gap-2 text-2xl font-semibold tabular-nums"
+                        >
+                            <Thermometer
+                                class="size-5 text-muted-foreground"
+                            />
+                            {{
+                                device.latest &&
+                                device.latest.temperature !== null
+                                    ? `${device.latest.temperature.toFixed(1)}°C`
+                                    : '—'
+                            }}
+                        </div>
+                        <div
+                            class="flex items-center gap-1.5 text-sm font-medium tabular-nums text-muted-foreground"
+                        >
+                            <Droplets class="size-4" />
+                            {{
+                                device.latest &&
+                                device.latest.humidity !== null
+                                    ? `${device.latest.humidity.toFixed(1)}%`
+                                    : '—'
+                            }}
+                        </div>
                     </div>
 
                     <div

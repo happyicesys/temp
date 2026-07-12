@@ -56,7 +56,12 @@ test('persists one Temp row per known device returned by the vendor', function (
     $b->refresh();
     expect($a->last_polled_at)->not->toBeNull()
         ->and($a->last_reading_at)->not->toBeNull()
-        ->and($b->last_polled_at)->not->toBeNull();
+        ->and($b->last_polled_at)->not->toBeNull()
+        // The denormalised cache the device list reads must mirror the reading.
+        ->and((float) $a->last_temperature)->toBe(-20.5)
+        ->and((float) $a->last_humidity)->toBe(70.1)
+        ->and((float) $b->last_temperature)->toBe(4.0)
+        ->and((float) $b->last_humidity)->toBe(55.0);
 });
 
 test('unknown vendor devices are ignored when auto-registration is off', function () {

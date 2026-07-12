@@ -21,7 +21,7 @@ class DeviceController extends Controller
     public function index(): Response
     {
         $devices = Device::query()
-            ->with(['customer:id,name', 'latestVendTemp'])
+            ->with(['customer:id,name'])
             ->orderBy('name')
             ->get()
             ->map(fn (Device $device): array => [
@@ -33,10 +33,13 @@ class DeviceController extends Controller
                 'location' => $device->location,
                 'is_active' => $device->is_active,
                 'customer' => $device->customer?->name,
-                'latest' => $device->latestVendTemp ? [
-                    'value' => $device->latestVendTemp->celsius,
-                    'recorded_at' => $device->latestVendTemp->recorded_at?->toIso8601String(),
-                ] : null,
+                // Read from the denormalised cache columns the poll job keeps
+                // in sync, so the list never runs a per-row subquery.
+                'latest' => $device->last_reading_at === null ? null : [
+                    'temperature' => $device->last_temperature === null ? null : (float) $device->last_temperature,
+                    'humidity' => $device->last_humidity === null ? null : (float) $device->last_humidity,
+                    'recorded_at' => $device->last_reading_at->toIso8601String(),
+                ],
             ]);
 
         return Inertia::render('Devices/Index', [

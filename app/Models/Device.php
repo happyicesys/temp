@@ -27,6 +27,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'alert_phones',
     'last_polled_at',
     'last_reading_at',
+    'last_temperature',
+    'last_humidity',
 ])]
 class Device extends Model
 {
@@ -46,6 +48,8 @@ class Device extends Model
             'alert_high_temp' => 'decimal:2',
             'last_polled_at' => 'datetime',
             'last_reading_at' => 'datetime',
+            'last_temperature' => 'decimal:2',
+            'last_humidity' => 'decimal:2',
         ];
     }
 
@@ -103,6 +107,20 @@ class Device extends Model
     public function latestVendTemp(): HasOne
     {
         return $this->hasOne(VendTemp::class)->latestOfMany('recorded_at');
+    }
+
+    /**
+     * Most recent chamber (T1) reading. The dashboard treats the chamber probe
+     * as the device's headline temperature, so it needs the latest sample of
+     * that specific type rather than of any probe.
+     *
+     * @return HasOne<VendTemp, $this>
+     */
+    public function latestChamberTemp(): HasOne
+    {
+        return $this->hasOne(VendTemp::class)
+            ->where('type', VendTemp::TYPE_CHAMBER)
+            ->latestOfMany('recorded_at');
     }
 
     /**

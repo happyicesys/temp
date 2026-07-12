@@ -134,6 +134,8 @@ class PollVendorAccountJob implements ShouldQueue
         $device->forceFill([
             'last_polled_at' => $now,
             'last_reading_at' => $reading->recordedAt,
+            'last_temperature' => $reading->temperature,
+            'last_humidity' => $reading->humidity,
         ])->save();
     }
 }

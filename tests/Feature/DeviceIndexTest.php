@@ -3,7 +3,6 @@
 use App\Models\Customer;
 use App\Models\Device;
 use App\Models\User;
-use App\Models\VendTemp;
 
 use function Pest\Laravel\actingAs;
 
@@ -25,21 +24,28 @@ test('authenticated users land on a device list', function () {
         );
 });
 
-test('the device list surfaces the latest reading in celsius', function () {
-    $device = Device::factory()->for(Customer::factory())->create();
-
-    VendTemp::factory()->for($device)->create([
-        'value' => -190,
-        'recorded_at' => now()->subDay(),
-    ]);
-    VendTemp::factory()->for($device)->create([
-        'value' => -181,
-        'recorded_at' => now()->subMinutes(5),
-    ]);
+test('the device list surfaces the cached latest temperature and humidity', function () {
+    $device = Device::factory()
+        ->for(Customer::factory())
+        ->withLatestReading(temperature: -18.1, humidity: 62.5, recordedAt: now()->subMinutes(5))
+        ->create();
 
     actingAs(User::factory()->create())
         ->get(route('devices.index'))
-        ->assertInertia(fn ($page) => $page->where('devices.0.latest.value', -18.1));
+        ->assertInertia(fn ($page) => $page
+            ->where('devices.0.id', $device->id)
+            ->where('devices.0.latest.temperature', -18.1)
+            ->where('devices.0.latest.humidity', 62.5)
+            ->whereNot('devices.0.latest.recorded_at', null)
+        );
+});
+
+test('the device list reports no reading when the cache is empty', function () {
+    Device::factory()->for(Customer::factory())->create();
+
+    actingAs(User::factory()->create())
+        ->get(route('devices.index'))
+        ->assertInertia(fn ($page) => $page->where('devices.0.latest', null));
 });
 
 test('login redirects to the device list', function () {

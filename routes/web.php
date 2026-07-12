@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\VendTempController;
 use Illuminate\Support\Facades\Auth;
@@ -10,7 +11,7 @@ Route::get('/', function () {
 })->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    Route::get('dashboard', DashboardController::class)->name('dashboard');
 
     Route::get('devices', [DeviceController::class, 'index'])->name('devices.index');
     Route::get('devices/create', [DeviceController::class, 'create'])->name('devices.create');

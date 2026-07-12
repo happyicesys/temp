@@ -36,7 +36,25 @@ class DeviceFactory extends Factory
             'alert_phones' => null,
             'last_polled_at' => null,
             'last_reading_at' => null,
+            'last_temperature' => null,
+            'last_humidity' => null,
         ];
+    }
+
+    /**
+     * Seed the denormalised latest-reading cache columns, as the poll job
+     * populates them after a successful reading.
+     */
+    public function withLatestReading(float $temperature, float $humidity, ?\DateTimeInterface $recordedAt = null): static
+    {
+        $recordedAt ??= now();
+
+        return $this->state(fn (array $attributes): array => [
+            'last_temperature' => $temperature,
+            'last_humidity' => $humidity,
+            'last_reading_at' => $recordedAt,
+            'last_polled_at' => $recordedAt,
+        ]);
     }
 
     /**
