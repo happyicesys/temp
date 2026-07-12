@@ -62,8 +62,11 @@ enum DashboardRange: string
 
     /**
      * The start of the window relative to a given end time.
+     *
+     * Named `startsAt` rather than `from` because backed enums already expose a
+     * built-in static `from()`.
      */
-    public function from(CarbonInterface $to): CarbonImmutable
+    public function startsAt(CarbonInterface $to): CarbonImmutable
     {
         return CarbonImmutable::instance($to)->subMinutes($this->windowMinutes());
     }
@@ -107,7 +110,7 @@ enum DashboardRange: string
     {
         $start = CarbonImmutable::instance($from);
         $end = CarbonImmutable::instance($to);
-        $totalSeconds = $end->diffInSeconds($start);
+        $totalSeconds = $start->diffInSeconds($end, true);
 
         return collect(range(0, $count - 1))
             ->map(function (int $step) use ($start, $totalSeconds, $count, $format): string {

@@ -42,7 +42,7 @@ class BuildDashboardData
     public function handle(DashboardRange $range, ?CarbonInterface $now = null): array
     {
         $to = CarbonImmutable::instance($now ?? CarbonImmutable::now());
-        $from = $range->from($to);
+        $from = $range->startsAt($to);
         $onlineSince = $to->subMinutes(self::ONLINE_WITHIN_MINUTES);
 
         $devices = Device::query()

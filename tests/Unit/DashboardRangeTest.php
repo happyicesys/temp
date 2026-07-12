@@ -29,14 +29,14 @@ test('each range describes a matching bucket layout', function (DashboardRange $
 test('the window starts one full span before the given end', function () {
     $to = CarbonImmutable::parse('2026-07-12 12:00:00');
 
-    expect(DashboardRange::Day->from($to)->toDateTimeString())
+    expect(DashboardRange::Day->startsAt($to)->toDateTimeString())
         ->toBe('2026-07-11 12:00:00');
 });
 
 test('axis labels line up with the range', function () {
     $to = CarbonImmutable::parse('2026-07-12 12:00:00');
 
-    expect(DashboardRange::Day->axisLabels(DashboardRange::Day->from($to), $to))->toHaveCount(5)
-        ->and(DashboardRange::Week->axisLabels(DashboardRange::Week->from($to), $to))->toHaveCount(7)
-        ->and(DashboardRange::Month->axisLabels(DashboardRange::Month->from($to), $to))->toHaveCount(5);
+    expect(DashboardRange::Day->axisLabels(DashboardRange::Day->startsAt($to), $to))->toHaveCount(5)
+        ->and(DashboardRange::Week->axisLabels(DashboardRange::Week->startsAt($to), $to))->toHaveCount(7)
+        ->and(DashboardRange::Month->axisLabels(DashboardRange::Month->startsAt($to), $to))->toHaveCount(5);
 });
