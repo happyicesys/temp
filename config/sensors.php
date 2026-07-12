@@ -51,4 +51,19 @@ return [
         'min_interval_seconds' => (int) env('SENSORS_POLL_MIN_INTERVAL_SECONDS', 70),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Offline Threshold
+    |--------------------------------------------------------------------------
+    |
+    | A device is considered offline once its most recent reading is older than
+    | this many seconds. Drives both the live online/offline badge on the device
+    | list and the scheduled `devices:refresh-status` check. Defaults to 10
+    | minutes — comfortably longer than the poll cadence so a single missed poll
+    | doesn't flap the status.
+    |
+    */
+
+    'offline_after_seconds' => (int) env('SENSORS_OFFLINE_AFTER_SECONDS', 600),
+
 ];

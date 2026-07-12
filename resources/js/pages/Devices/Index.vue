@@ -32,6 +32,7 @@ interface DeviceRow {
     asset_code: string | null;
     location: string | null;
     is_active: boolean;
+    is_online: boolean;
     customer: string | null;
     latest: {
         temperature: number | null;
@@ -78,6 +79,72 @@ function formatTime(iso: string | null): string {
           });
 }
 
+/** Compact "time ago" for the last-seen line, e.g. "4h ago", "just now". */
+function timeAgo(iso: string | null): string {
+    if (!iso) {
+        return 'never';
+    }
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) {
+        return iso;
+    }
+    const seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
+    if (seconds < 60) {
+        return 'just now';
+    }
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) {
+        return `${minutes}m ago`;
+    }
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) {
+        return `${hours}h ago`;
+    }
+    return `${Math.round(hours / 24)}d ago`;
+}
+
+type StatusKey = 'online' | 'offline' | 'paused';
+
+interface DeviceStatus {
+    key: StatusKey;
+    label: string;
+    badgeClass: string;
+    dotClass: string;
+    pulse: boolean;
+}
+
+/** Resolve the display status: paused (manually disabled) wins, else live online/offline. */
+function statusOf(device: DeviceRow): DeviceStatus {
+    if (!device.is_active) {
+        return {
+            key: 'paused',
+            label: 'Paused',
+            badgeClass:
+                'bg-muted text-muted-foreground ring-1 ring-inset ring-border',
+            dotClass: 'bg-muted-foreground/60',
+            pulse: false,
+        };
+    }
+    if (device.is_online) {
+        return {
+            key: 'online',
+            label: 'Online',
+            badgeClass:
+                'bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-400',
+            dotClass: 'bg-emerald-500',
+            pulse: true,
+        };
+    }
+    return {
+        key: 'offline',
+        label: 'Offline',
+        badgeClass:
+            'bg-rose-500/10 text-rose-600 ring-1 ring-inset ring-rose-500/20 dark:text-rose-400',
+        dotClass: 'bg-rose-500',
+        pulse: false,
+    };
+}
+
 function destroy(id: number): void {
     router.delete(`/devices/${id}`);
 }
@@ -119,14 +186,21 @@ function destroy(id: number): void {
                             </div>
                         </div>
                         <span
-                            class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-                            :class="
-                                device.is_active
-                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                    : 'bg-muted text-muted-foreground'
-                            "
+                            class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+                            :class="statusOf(device).badgeClass"
                         >
-                            {{ device.is_active ? 'Active' : 'Inactive' }}
+                            <span class="relative flex size-2">
+                                <span
+                                    v-if="statusOf(device).pulse"
+                                    class="absolute inline-flex size-full animate-ping rounded-full opacity-75"
+                                    :class="statusOf(device).dotClass"
+                                />
+                                <span
+                                    class="relative inline-flex size-2 rounded-full"
+                                    :class="statusOf(device).dotClass"
+                                />
+                            </span>
+                            {{ statusOf(device).label }}
                         </span>
                     </div>
 
@@ -168,9 +242,20 @@ function destroy(id: number): void {
                                 'Unknown location'
                             }}
                         </span>
-                        <span class="shrink-0">{{
-                            formatTime(device.latest?.recorded_at ?? null)
-                        }}</span>
+                        <span
+                            class="shrink-0 tabular-nums"
+                            :class="
+                                statusOf(device).key === 'offline'
+                                    ? 'font-medium text-rose-600 dark:text-rose-400'
+                                    : ''
+                            "
+                            :title="formatTime(device.latest?.recorded_at ?? null)"
+                        >
+                            <template v-if="device.latest?.recorded_at">
+                                {{ statusOf(device).key === 'offline' ? 'Last seen ' : '' }}{{ timeAgo(device.latest.recorded_at) }}
+                            </template>
+                            <template v-else>No readings yet</template>
+                        </span>
                     </div>
 
                     <div

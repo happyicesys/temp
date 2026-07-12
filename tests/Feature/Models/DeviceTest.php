@@ -54,3 +54,17 @@ test('alertEmailList is empty when the column is null or blank', function () {
     $device->update(['alert_emails' => '   ']);
     expect($device->fresh()->alertEmailList())->toBe([]);
 });
+
+test('hasFreshReading reflects the last reading age against the configured window', function () {
+    config()->set('sensors.offline_after_seconds', 600);
+    $device = Device::factory()->for(Customer::factory())->make();
+
+    $device->last_reading_at = null;
+    expect($device->hasFreshReading())->toBeFalse();
+
+    $device->last_reading_at = now()->subMinutes(2);
+    expect($device->hasFreshReading())->toBeTrue();
+
+    $device->last_reading_at = now()->subMinutes(20);
+    expect($device->hasFreshReading())->toBeFalse();
+});

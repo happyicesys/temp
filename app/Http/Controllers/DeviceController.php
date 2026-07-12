@@ -32,6 +32,9 @@ class DeviceController extends Controller
                 'asset_code' => $device->asset_code,
                 'location' => $device->location,
                 'is_active' => $device->is_active,
+                // Live online/offline status, derived from reading freshness so
+                // the badge is always current regardless of the scheduled check.
+                'is_online' => $device->hasFreshReading(),
                 'customer' => $device->customer?->name,
                 // Read from the denormalised cache columns the poll job keeps
                 // in sync, so the list never runs a per-row subquery.

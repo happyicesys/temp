@@ -40,6 +40,27 @@ test('the device list surfaces the cached latest temperature and humidity', func
         );
 });
 
+test('the device list exposes a live online status from reading freshness', function () {
+    $online = Device::factory()
+        ->for(Customer::factory())
+        ->withLatestReading(temperature: -18.0, humidity: 60, recordedAt: now()->subMinutes(2))
+        ->create(['name' => 'Fresh']);
+
+    $offline = Device::factory()
+        ->for(Customer::factory())
+        ->withLatestReading(temperature: -18.0, humidity: 60, recordedAt: now()->subMinutes(30))
+        ->create(['name' => 'Stale']);
+
+    actingAs(User::factory()->create())
+        ->get(route('devices.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('devices.0.id', $online->id)
+            ->where('devices.0.is_online', true)
+            ->where('devices.1.id', $offline->id)
+            ->where('devices.1.is_online', false)
+        );
+});
+
 test('the device list reports no reading when the cache is empty', function () {
     Device::factory()->for(Customer::factory())->create();
 

@@ -29,6 +29,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'last_reading_at',
     'last_temperature',
     'last_humidity',
+    'is_online',
+    'went_offline_at',
 ])]
 class Device extends Model
 {
@@ -50,7 +52,28 @@ class Device extends Model
             'last_reading_at' => 'datetime',
             'last_temperature' => 'decimal:2',
             'last_humidity' => 'decimal:2',
+            'is_online' => 'boolean',
+            'went_offline_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Whether the device has reported a reading recently enough to count as
+     * online. Derived live from the reading cache so the badge is never stale;
+     * the scheduled status check persists the same result onto {@see $is_online}
+     * for offline-transition detection.
+     *
+     * @param  int|null  $thresholdSeconds  Overrides the configured window.
+     */
+    public function hasFreshReading(?int $thresholdSeconds = null): bool
+    {
+        if ($this->last_reading_at === null) {
+            return false;
+        }
+
+        $thresholdSeconds ??= (int) config('sensors.offline_after_seconds', 600);
+
+        return $this->last_reading_at->greaterThanOrEqualTo(now()->subSeconds($thresholdSeconds));
     }
 
     /**

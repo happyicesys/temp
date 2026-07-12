@@ -54,9 +54,10 @@ class PollVendorAccountJob implements ShouldBeUnique, ShouldQueue
     public int $tries = 1;
 
     /**
-     * Release the uniqueness lock after this many seconds even if the job never
-     * reported completion, so a crashed worker can't wedge polling shut. Comfortably
-     * longer than {@see $timeout} but shorter than the poll cadence.
+     * Failsafe ceiling on the uniqueness lock. In the happy path the lock is
+     * released the instant the job finishes; this only matters if a worker is
+     * killed mid-poll without releasing it. Comfortably longer than
+     * {@see $timeout} so a legitimately slow poll never drops its own lock.
      */
     public int $uniqueFor = 120;
 

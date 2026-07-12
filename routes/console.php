@@ -15,3 +15,9 @@ Schedule::command('sensors:poll')
     ->everyTwoMinutes()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Reconcile each device's persisted online/offline state once a minute so the
+// offline transition is detected promptly (the live badge is derived on read).
+Schedule::command('devices:refresh-status')
+    ->everyMinute()
+    ->withoutOverlapping();
