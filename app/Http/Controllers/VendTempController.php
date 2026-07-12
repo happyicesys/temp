@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Resources\VendTempResource;
+use App\Http\Resources\TempResource;
 use App\Models\Device;
-use App\Models\VendTemp;
+use App\Models\Temp;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -13,19 +13,17 @@ use Inertia\Response;
 class VendTempController extends Controller
 {
     /** Default window (in hours) when no explicit range is supplied. */
-    private const DEFAULT_WINDOW_HOURS = 24;
+    private const DEFAULT_WINDOW_HOURS = 1;
 
     /**
-     * Render the temperature chart for a single device.
+     * Render the temperature / humidity chart for a single device.
      */
     public function index(Request $request, Device $device): Response
     {
         [$from, $to] = $this->resolveRange($request);
-        $types = $this->resolveTypes($request);
 
-        $readings = VendTemp::query()
+        $readings = Temp::query()
             ->where('device_id', $device->getKey())
-            ->ofTypes($types)
             ->between($from, $to)
             ->orderBy('recorded_at')
             ->get();
@@ -47,14 +45,11 @@ class VendTempController extends Controller
                 ]),
             // resolve() unwraps the resource collection's default `data` key so
             // the Vue layer receives a plain array of readings.
-            'readings' => VendTempResource::collection($readings)->resolve($request),
+            'readings' => TempResource::collection($readings)->resolve($request),
             'filters' => [
                 'datetime_from' => $from->toIso8601String(),
                 'datetime_to' => $to->toIso8601String(),
             ],
-            'selectedTypes' => $types,
-            'typeLabels' => VendTemp::typeLabels(),
-            'alerts' => VendTemp::DEFAULT_ALERTS,
         ]);
     }
 
@@ -76,26 +71,5 @@ class VendTempController extends Controller
         }
 
         return [$from, $to];
-    }
-
-    /**
-     * Resolve the requested probe types, defaulting to chamber + evaporator.
-     *
-     * @return array<int, int>
-     */
-    private function resolveTypes(Request $request): array
-    {
-        $valid = array_keys(VendTemp::typeLabels());
-
-        $requested = collect($request->input('types', []))
-            ->map(fn ($type): int => (int) $type)
-            ->filter(fn (int $type): bool => in_array($type, $valid, true))
-            ->unique()
-            ->values()
-            ->all();
-
-        return $requested !== []
-            ? $requested
-            : [VendTemp::TYPE_CHAMBER, VendTemp::TYPE_EVAPORATOR];
     }
 }
